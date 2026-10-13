@@ -24,9 +24,26 @@ def clean(housing):
     df["Lot Frontage"] = df["Lot Frontage"].fillna(df["Lot Frontage"].median())
     df["Electrical"] = df["Electrical"].fillna(df["Electrical"].mode()[0])
 
+    # rows that contradict themselves: most common value
+    has_bsmt = df["Bsmt Qual"] != "None"
+    df.loc[has_bsmt & (df["Bsmt Exposure"] == "None"), "Bsmt Exposure"] = "No"
+    df.loc[(df["BsmtFin SF 2"] > 0) & (df["BsmtFin Type 2"] == "None"), "BsmtFin Type 2"] = "Rec"
+
+    # veneer type "None" but area > 0: trust the type
+    df.loc[(df["Mas Vnr Type"] == "None") & (df["Mas Vnr Area"] > 0), "Mas Vnr Area"] = 0
+
+    # garage type set, but every other garage column is empty: no garage
+    df.loc[(df["Garage Type"] != "None") & (df["Garage Area"] == 0), "Garage Type"] = "None"
+    # real garage without details: most common values for detached garages
+    no_info = (df["Garage Type"] != "None") & (df["Garage Finish"] == "None")
+    df.loc[no_info, ["Garage Finish", "Garage Qual", "Garage Cond"]] = ["Unf", "TA", "TA"]
+
     # typo in Garage Yr Blt (2207)
     bad = df["Garage Yr Blt"] > 2010
     df.loc[bad, "Garage Yr Blt"] = df.loc[bad, "Year Built"]
+
+    # MS SubClass is a code, not a number
+    df["MS SubClass"] = df["MS SubClass"].astype(str)
 
     # outliers: huge houses sold as unfinished ("Partial") for far too little
     outliers = (df["Gr Liv Area"] > 4000) & (df["Sale Condition"] == "Partial")
@@ -41,3 +58,11 @@ def clean(housing):
     df["Has Garage"] = (df["Garage Area"] > 0).astype(int)
 
     return df.drop(columns=["Order", "PID"])
+
+
+def add_quality_scores(df):
+    df = df.copy()
+    quality = {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "None": 0}
+    for col in ["Exter Qual", "Kitchen Qual", "Bsmt Qual", "Heating QC", "Fireplace Qu"]:
+        df[col + " Num"] = df[col].map(quality)
+    return df
